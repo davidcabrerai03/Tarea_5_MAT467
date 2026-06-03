@@ -1,0 +1,108 @@
+> 
+> # Instalar los paquetes necesarios para el análisis espacial
+> install.packages(c("spdep", "spatialreg", "maps", "sf"))
+Warning: packages ‘spdep’, ‘spatialreg’, ‘maps’, ‘sf’ are in use and will not be installed
+> 
+> 
+> # 1. Cargar librerías necesarias
+> library(spdep)
+> library(spatialreg)
+> library(maps)
+> library(sf)
+> 
+> # 2. Leer el archivo local 'SAT.csv'
+> # IMPORTANTE: Asegúrate de que el archivo SAT.csv esté guardado en tu 
+> # directorio de trabajo actual (Working Directory) en RStudio.
+> datos_sat <- read.csv("SAT.csv")
+> 
+> # 3. Preparación Espacial: Obtener el mapa de estados continentales
+> # El paquete 'maps' nos da la geometría de los estados de EE.UU.
+> usa_map <- st_as_sf(map("state", plot = FALSE, fill = TRUE))
+> 
+> # Convertir los nombres de tu CSV a minúsculas para un correcto emparejamiento (merge)
+> datos_sat$ID <- tolower(datos_sat$state)
+> 
+> 
+> sat_espacial <- merge(usa_map, datos_sat, by = "ID")
+> 
+> # 4. Crear la estructura espacial (Matriz de Vecindad W)
+> vecinos <- poly2nb(sat_espacial, queen = TRUE)
+Error in wk_handle.wk_wkb(wkb, s2_geography_writer(oriented = oriented,  : 
+  Loop 0 is not valid: Edge 344 crosses edge 346
+> matriz_W <- nb2listw(vecinos, style = "W", zero.policy = TRUE)
+Error: object 'vecinos' not found
+> 
+> # 5. Ajustar el modelo SAR (Spatial Lag) mediante Máxima Verosimilitud
+> # Y = sat (Puntaje Combinado), X = expend (Gasto Educacional)
+> modelo_sar <- lagsarlm(sat ~ expend, data = sat_espacial, listw = matriz_W, zero.policy = TRUE)
+Error: object 'matriz_W' not found
+> 
+> # 6. Mostrar el resumen estadístico del modelo
+> print(summary(modelo_sar))
+Error in h(simpleError(msg, call)) : 
+  error in evaluating the argument 'x' in selecting a method for function 'print': error in evaluating the argument 'object' in selecting a method for function 'summary': object 'modelo_sar' not found
+> # 1. Cargar librerías necesarias
+> library(spdep)
+> library(spatialreg)
+> library(maps)
+> library(sf)
+> 
+> # --- ¡LA SOLUCIÓN AL ERROR! ---
+> # Desactivar la geometría esférica estricta para tolerar el mapa clásico
+> sf_use_s2(FALSE) 
+Spherical geometry (s2) switched off
+> # ------------------------------
+> 
+> # 2. Leer el archivo local 'SAT.csv'
+> datos_sat <- read.csv("SAT.csv")
+> 
+> # 3. Preparación Espacial: Obtener el mapa de estados continentales
+> usa_map <- st_as_sf(map("state", plot = FALSE, fill = TRUE))
+> 
+> # Convertir los nombres de tu CSV a minúsculas para un correcto emparejamiento (merge)
+> datos_sat$ID <- tolower(datos_sat$state)
+> 
+> # Unir tus datos locales con la información geométrica espacial
+> sat_espacial <- merge(usa_map, datos_sat, by = "ID")
+> 
+> # 4. Crear la estructura espacial (Matriz de Vecindad W)
+> # ¡Ahora esto funcionará sin problema!
+> vecinos <- poly2nb(sat_espacial, queen = TRUE)
+although coordinates are longitude/latitude, st_intersects assumes that they
+are planar
+> matriz_W <- nb2listw(vecinos, style = "W", zero.policy = TRUE)
+> 
+> # 5. Ajustar el modelo SAR (Spatial Lag) mediante Máxima Verosimilitud
+> # Y = sat (Puntaje Combinado), X = expend (Gasto Educacional)
+> modelo_sar <- lagsarlm(sat ~ expend, data = sat_espacial, listw = matriz_W, zero.policy = TRUE)
+> 
+> # 6. Mostrar el resumen estadístico del modelo
+> print(summary(modelo_sar))
+
+Call:lagsarlm(formula = sat ~ expend, data = sat_espacial, listw = matriz_W, 
+    zero.policy = TRUE)
+
+Residuals:
+      Min        1Q    Median        3Q       Max 
+-118.0262  -32.9439    6.3963   29.4173   88.4518 
+
+Type: lag 
+Coefficients: (asymptotic standard errors) 
+            Estimate Std. Error z value Pr(>|z|)
+(Intercept) 296.7290   104.3069  2.8448 0.004444
+expend       -8.2858     5.4961 -1.5076 0.131659
+
+Rho: 0.74138, LR test value: 28.062, p-value: 1.1747e-07
+Asymptotic standard error: 0.09287
+    z-value: 7.9829, p-value: 1.3323e-15
+Wald statistic: 63.727, p-value: 1.4433e-15
+
+Log likelihood: -257.2669 for lag model
+ML residual variance (sigma squared): 2209.5, (sigma: 47.005)
+Number of observations: 48 
+Number of parameters estimated: 4 
+AIC: 522.53, (AIC for lm: 548.6)
+LM test for residual autocorrelation
+test value: 0.051302, p-value: 0.82081
+
+> 

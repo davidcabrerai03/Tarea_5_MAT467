@@ -1,0 +1,159 @@
+# ==========================================================
+# MODELO CAR PARA LOS DATOS SAT (Ítems A y C unificados)
+# ==========================================================
+
+# ==========================================================
+# 1. Instalar y cargar paquetes
+# ==========================================================
+paquetes <- c("spdep", "spatialreg", "maps", "sf")
+nuevos_paquetes <- paquetes[!(paquetes %in% installed.packages()[,"Package"])]
+
+if(length(nuevos_paquetes) > 0){
+  install.packages(nuevos_paquetes)
+}
+
+library(spdep)
+library(spatialreg)
+library(maps)
+library(sf)
+
+# ==========================================================
+# 2. Cargar datos
+# ==========================================================
+sat_data <- read.csv("SAT.csv")
+
+# Convertir nombres de estados a minúsculas para hacer match
+sat_data$state_lower <- tolower(sat_data$state)
+
+# ==========================================================
+# 3. Crear mapa de estados
+# ==========================================================
+usa_map <- map("state", fill = TRUE, plot = FALSE)
+usa_sf <- st_as_sf(usa_map)
+
+# Unir datos SAT con geometrías del mapa
+map_data <- merge(
+  usa_sf,
+  sat_data,
+  by.x = "ID",
+  by.y = "state_lower",
+  all.x = FALSE
+)
+
+cat("Número de estados emparejados:", nrow(map_data), "\n")
+
+# ==========================================================
+# 4. Crear estructura espacial
+# ==========================================================
+sf_use_s2(FALSE)
+
+nb_states <- poly2nb(map_data)
+lw_states <- nb2listw(
+  nb_states,
+  style = "B",
+  zero.policy = TRUE
+)
+
+# ==========================================================
+# 5. Ajustar modelo CAR
+# ==========================================================
+modelo_car <- spautolm(
+  math ~ expend + ratio + salary + frac,
+  data = map_data,
+  listw = lw_states,
+  family = "CAR",
+  zero.policy = TRUE
+)
+
+cat("\n=============================\n")
+cat("RESUMEN DEL MODELO CAR (ÍTEM A)\n")
+cat("=============================\n")
+print(summary(modelo_car))
+
+# ==========================================================
+# 6. Obtener predicciones y residuos
+# ==========================================================
+map_data$valores_verdaderos <- map_data$math
+map_data$valores_predichos <- fitted(modelo_car)
+map_data$residuos <- residuals(modelo_car)
+
+# ==========================================================
+# 7. Carpeta de salida para imágenes
+# ==========================================================
+ruta_salida <- getwd()
+cat("\nLos archivos PDF se guardarán en:\n")
+cat(ruta_salida, "\n")
+
+# ==========================================================
+# 8. PDF 1: Valores observados
+# ==========================================================
+pdf(file.path(ruta_salida, "SAT_Observado.pdf"), width = 8, height = 6)
+plot(
+  map_data["valores_verdaderos"],
+  main = "Puntajes SAT Matemáticas\n(Valores Observados)",
+  border = "darkgray"
+)
+dev.off()
+
+# ==========================================================
+# 9. PDF 2: Valores predichos
+# ==========================================================
+pdf(file.path(ruta_salida, "SAT_Predicho.pdf"), width = 8, height = 6)
+plot(
+  map_data["valores_predichos"],
+  main = "Puntajes SAT Matemáticas\n(Predicciones Modelo CAR)",
+  border = "darkgray"
+)
+dev.off()
+
+# ==========================================================
+# 10. PDF 3: Residuos
+# ==========================================================
+pdf(file.path(ruta_salida, "SAT_Residuos.pdf"), width = 8, height = 6)
+plot(
+  map_data["residuos"],
+  main = "Residuos del Modelo CAR",
+  border = "darkgray"
+)
+dev.off()
+
+# ==========================================================
+# 11. Información final de PDFs
+# ==========================================================
+cat("\n=============================\n")
+cat("ARCHIVOS GENERADOS\n")
+cat("=============================\n")
+cat("1. SAT_Observado.pdf\n")
+cat("2. SAT_Predicho.pdf\n")
+cat("3. SAT_Residuos.pdf\n")
+cat("\nUbicación:\n")
+cat(ruta_salida, "\n")
+
+# ==========================================================
+# 12. Diagnóstico adicional
+# ==========================================================
+cat("\n=============================\n")
+cat("DIAGNÓSTICO DEL MODELO\n")
+cat("=============================\n")
+cat("AIC =", AIC(modelo_car), "\n")
+cat("Lambda =", modelo_car$lambda, "\n")
+
+# ==========================================================
+# 13. ÍTEM C: Imputación de Maryland
+# ==========================================================
+cat("\n=============================\n")
+cat("ÍTEM C: IMPUTACIÓN PARA MARYLAND\n")
+cat("=============================\n")
+
+# Extraemos la fila correspondiente al estado de Maryland
+maryland_data <- subset(map_data, ID == "maryland")
+
+# Asignamos los valores a variables
+sat_real_maryland <- maryland_data$valores_verdaderos
+sat_imputado_maryland <- maryland_data$valores_predichos
+error_absoluto <- abs(sat_real_maryland - sat_imputado_maryland)
+
+cat("Valor Real (SAT Matemáticas Maryland):", sat_real_maryland, "\n")
+cat("Valor Imputado (Esperanza Condicional CAR):", round(sat_imputado_maryland, 4), "\n")
+cat("Error Absoluto de Estimación:", round(error_absoluto, 4), "puntos\n")
+cat("\n=============================\n")
